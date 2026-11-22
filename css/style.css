@@ -453,3 +453,184 @@ header {
         grid-template-columns: repeat(3, 1fr);
     }
 }
+
+/* ===== 修行を楽しくする演出 ===== */
+
+.dots {
+    display: flex;
+    gap: 6px;
+}
+
+.dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3a4a6e;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.dot.now {
+    box-shadow: 0 0 0 2px var(--paper);
+}
+
+.dot.ok {
+    background: #7ee2a5;
+    transform: scale(1.2);
+}
+
+.dot.ng {
+    background: var(--red);
+}
+
+.card {
+    position: relative;
+}
+
+.new-tag {
+    position: absolute;
+    top: -10px;
+    left: 16px;
+    background: var(--gold);
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 15px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    z-index: 1;
+    animation: pop 0.4s;
+}
+
+.shuriken {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    font-size: 64px;
+    color: #9fb3d9;
+    pointer-events: none;
+    animation: shuriken 0.6s ease-out forwards;
+}
+
+@keyframes shuriken {
+    0% { transform: translate(-60vw, 30vh) rotate(0deg); opacity: 1; }
+    80% { transform: translate(-50%, -50%) rotate(900deg); opacity: 1; }
+    100% { transform: translate(-50%, -50%) rotate(1000deg) scale(1.6); opacity: 0; }
+}
+
+.combo {
+    color: var(--gold);
+    animation: pop 0.4s;
+}
+
+.combo.c3 { font-size: 30px; }
+.combo.c4 { font-size: 34px; }
+.combo.c5 { font-size: 40px; text-shadow: 0 0 12px var(--gold); }
+
+.reveal {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 15, 30, 0.7);
+    z-index: 20;
+    animation: fade-in 0.2s;
+}
+
+.reveal-inner {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--gold);
+}
+
+.reveal-scroll {
+    font-family: var(--kanji-font);
+    font-size: 140px;
+    line-height: 1;
+    width: 240px;
+    padding: 24px 0;
+    margin: 0 auto 16px;
+    background: var(--paper);
+    color: var(--ink);
+    border-left: 16px solid #7a4a24;
+    border-right: 16px solid #7a4a24;
+    border-radius: 8px;
+    animation: unroll 0.6s ease-out;
+}
+
+.reveal-scroll.lv2 { box-shadow: 0 0 24px var(--silver); }
+.reveal-scroll.lv3 { box-shadow: 0 0 36px var(--gold); background: #fff3c4; }
+
+@keyframes unroll {
+    0% { transform: scaleX(0.05); color: transparent; }
+    60% { transform: scaleX(1); color: transparent; }
+    100% { transform: scaleX(1); }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+}
+
+/* ===== 結果の盤面 ===== */
+
+.tally {
+    text-align: center;
+    font-size: 20px;
+    line-height: 1.6;
+}
+
+.tally strong {
+    font-size: 36px;
+    color: var(--gold);
+}
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+    gap: 4px;
+    background: var(--bg2);
+    border-radius: 16px;
+    padding: 12px;
+}
+
+.cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border-radius: 6px;
+    font-family: var(--kanji-font);
+    font-size: 20px;
+    background: #2f3d5c;
+    color: #4a5878;
+    border: 2px solid #3a4a6e;
+}
+
+.cell.lv1 { background: var(--paper); color: var(--ink); border-color: var(--bronze); }
+.cell.lv2 { background: var(--paper); color: var(--ink); border-color: var(--silver); }
+.cell.lv3 { background: #fff3c4; color: var(--ink); border-color: var(--gold); }
+
+.cell.fresh {
+    animation: fill-in 0.7s backwards;
+}
+
+.cell.grown {
+    animation: level-up 0.8s backwards;
+}
+
+@keyframes fill-in {
+    0% { background: #2f3d5c; color: #4a5878; border-color: #3a4a6e; transform: scale(1); }
+    50% { transform: scale(1.8); box-shadow: 0 0 16px var(--gold); z-index: 1; }
+    100% { transform: scale(1); }
+}
+
+@keyframes level-up {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.6); box-shadow: 0 0 20px var(--gold); }
+    100% { transform: scale(1); }
+}
+
+.btn.big {
+    font-size: 24px;
+    padding: 16px 28px;
+}

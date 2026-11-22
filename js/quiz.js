@@ -104,6 +104,24 @@ export function pickKanji(list, counts, n, rng = Math.random) {
 }
 
 /**
+ * 1回の修行の問題を選ぶ。まだ集めていない漢字を最大 newMax 個まぜて、
+ * のこりは集めた漢字の復習（育っていないものほど出やすい）。
+ * 毎回かならず少しずつ巻物帳が埋まっていくようにするため。
+ */
+export function pickSession(list, counts, n, newMax, rng = Math.random) {
+    const unseen = list.filter(x => !(counts[x.k] > 0));
+    const seen = list.filter(x => counts[x.k] > 0);
+    const fresh = shuffle(unseen, rng).slice(0, Math.min(newMax, n));
+    const review = pickKanji(seen, counts, n - fresh.length, rng);
+    // 集めた漢字がまだ少ないうちは、足りない分も新しい漢字で埋める
+    const rest = shuffle(
+        unseen.filter(x => !fresh.includes(x)),
+        rng
+    ).slice(0, n - fresh.length - review.length);
+    return shuffle([...fresh, ...review, ...rest], rng);
+}
+
+/**
  * 対決用。最近出た漢字は避けてランダムに1つ。
  */
 export function pickNext(list, recent, rng = Math.random) {

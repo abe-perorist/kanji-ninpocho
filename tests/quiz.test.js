@@ -66,6 +66,25 @@ const r2 = seeded(3);
 for (let i = 0; i < 200; i++) if (pickKanji(g1, counts, 1, r2)[0].k === '山') hits++;
 check(`育っていない巻物が出やすい（200回中${hits}回）`, hits > 50);
 
+{
+    const { pickSession } = await import('../js/quiz.js');
+    const isNew = c => x => !(c[x.k] > 0);
+    const first = pickSession(g1, {}, 10, 4, seeded(11));
+    check('はじめての修行は10問とも新しい漢字', first.length === 10 && new Set(first.map(x => x.k)).size === 10);
+
+    const half = Object.fromEntries(g1.slice(0, 40).map(x => [x.k, 1]));
+    const s = pickSession(g1, half, 10, 4, seeded(12));
+    check('集めた漢字が多いと、新しい漢字は4問まで', s.length === 10 && s.filter(isNew(half)).length === 4);
+
+    const all = Object.fromEntries(g1.map(x => [x.k, 2]));
+    const done = pickSession(g1, all, 10, 4, seeded(13));
+    check('全部集めたあとも10問出る', done.length === 10 && new Set(done.map(x => x.k)).size === 10);
+
+    const few = Object.fromEntries(g1.slice(0, 3).map(x => [x.k, 1]));
+    const f = pickSession(g1, few, 10, 4, seeded(14));
+    check('集めた漢字が3つなら、3問復習＋7問新しい', f.filter(isNew(few)).length === 7 && new Set(f.map(x => x.k)).size === 10);
+}
+
 const next = pickNext(g1, g1.slice(0, 79).map(x => x.k), seeded(5));
 check('対決では最近出た漢字を避ける', next.k === g1[79].k);
 
