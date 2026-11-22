@@ -1,0 +1,11 @@
+{
+  "name": "kanji-ninpocho",
+  "version": "0.1.0",
+  "description": "かんじ忍法帖 - 小学生向け漢字の読みゲーム",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node tests/data.test.js && node tests/quiz.test.js"
+  },
+  "license": "MIT"
+}
