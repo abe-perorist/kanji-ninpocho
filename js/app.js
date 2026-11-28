@@ -1,12 +1,28 @@
 import { GRADES, kanjiByGrade } from './kanji-data.js';
-import { LEVELS, buildMixedQuestion, levelOf, pickMatchSet, pickNext, pickSession, shuffle } from './quiz.js';
+import {
+    LEVELS,
+    buildMixedQuestion,
+    buildQuestion,
+    buildWriteQuestion,
+    levelOf,
+    pickMatchSet,
+    pickNext,
+    pickTasks,
+    shuffle,
+} from './quiz.js';
 import { addScroll, getBest, getPlayers, getScrolls, saveBestIfBetter, savePlayers } from './storage.js';
 
 const QUIZ_LENGTH = 10;
-const NEW_PER_QUIZ = 4; // 1回の修行でまぜる「まだ集めていない漢字」の数
+const NEW_PER_QUIZ = 4; // 1回の修行でまぜる「まだ読んだことのない漢字」の数
 const MATCH_PAIRS = 6;
 const BATTLE_SECONDS = 60;
 const PENALTY_MS = 1000;
+
+// 巻物は「よみ」と「かき」の2しゅるい。かきは読みを集めた漢字から出る
+const TRACKS = {
+    read: { label: 'よみ' },
+    write: { label: 'かき' },
+};
 
 const app = document.getElementById('app');
 let cleanup = null; // 画面を離れるときに止めるタイマーなど
@@ -118,8 +134,8 @@ function choiceButton(q, text) {
     return el('button', { class: q.type === 'write' ? 'choice kanji-choice' : 'choice' }, text);
 }
 
-function collectedCount(player) {
-    const scrolls = getScrolls(player.id);
+function collectedCount(player, track = 'read') {
+    const scrolls = getScrolls(player.id, track);
     const list = kanjiByGrade(player.grade);
     return {
         got: list.filter(x => scrolls[x.k] > 0).length,
@@ -128,8 +144,12 @@ function collectedCount(player) {
     };
 }
 
-function scrollBadge(k, level) {
-    return el('span', { class: `scroll lv${level}` }, k);
+function scrollBadge(k, level, track = 'read') {
+    return el('span', { class: `scroll lv${level} ${track}` }, k);
+}
+
+function trackTag(track) {
+    return el('span', { class: `track-tag ${track}` }, TRACKS[track].label);
 }
 
 // ===== ホーム =====
@@ -138,7 +158,6 @@ function showHome() {
     const players = getPlayers();
 
     const cards = players.map((player, index) => {
-        const c = collectedCount(player);
         const rename = () => {
             const name = window.prompt('なまえを いれてね', player.name);
             if (name && name.trim()) {
@@ -158,7 +177,14 @@ function showHome() {
             { class: 'player-card' },
             el('button', { class: 'name', onclick: rename }, player.name, el('small', {}, ' ✎')),
             el('button', { class: 'grade', onclick: changeGrade }, `${player.grade}ねんせい`),
-            el('div', { class: 'progress' }, `まきもの ${c.got} / ${c.total}`, el('br'), `きん ${c.gold}`),
+            el(
+                'div',
+                { class: 'progress' },
+                Object.keys(TRACKS).map(track => {
+                    const c = collectedCount(player, track);
+                    return el('div', {}, trackTag(track), ` ${c.got} / ${c.total}　きん ${c.gold}`);
+                })
+            ),
             el('button', { class: 'btn primary', onclick: () => startQuiz(player) }, 'しゅぎょう'),
             el(
                 'div',
@@ -185,42 +211,46 @@ function showHome() {
 
 function startQuiz(player) {
     const pool = kanjiByGrade(player.grade);
-    const targets = pickSession(pool, getScrolls(player.id), QUIZ_LENGTH, NEW_PER_QUIZ);
+    const tasks = pickTasks(pool, getScrolls(player.id, 'read'), getScrolls(player.id, 'write'), QUIZ_LENGTH, NEW_PER_QUIZ);
     const state = {
         index: 0,
         results: [],
         combo: 0,
         bestCombo: 0,
-        fresh: [], // はじめて集めた漢字
-        grown: [], // 銀・金に育った漢字
+        fresh: [], // はじめて集めた巻物 { k, track }
+        grown: [], // 銀・金に育った巻物 { k, track }
         missed: [],
-        gotBefore: collectedCount(player).got,
+        tracks: [...new Set(tasks.map(t => t.type))],
+        gotBefore: {
+            read: collectedCount(player, 'read').got,
+            write: collectedCount(player, 'write').got,
+        },
     };
     let timers = [];
     const later = (fn, ms) => timers.push(setTimeout(fn, ms));
 
     const next = () => {
         state.index++;
-        if (state.index < targets.length) render();
+        if (state.index < tasks.length) render();
         else showResult(player, state);
     };
 
     const render = () => {
-        const kanji = targets[state.index];
-        const isNew = !(getScrolls(player.id)[kanji.k] > 0);
-        const q = buildMixedQuestion(kanji, pool, { allowWrite: !isNew });
+        const { kanji, type: track } = tasks[state.index];
+        const isNew = !(getScrolls(player.id, track)[kanji.k] > 0);
+        const q = track === 'write' ? buildWriteQuestion(kanji, pool) : buildQuestion(kanji, pool);
         const qv = questionView(q);
         const feedback = el('div', { class: 'feedback' });
         const card = el(
             'div',
             { class: 'card' },
-            isNew && el('span', { class: 'new-tag' }, 'はじめての かんじ'),
+            isNew && el('span', { class: 'new-tag' }, track === 'write' ? 'はじめての かき' : 'はじめての かんじ'),
             qv.view
         );
         const dots = el(
             'div',
             { class: 'dots' },
-            targets.map((_, i) => {
+            tasks.map((_, i) => {
                 const r = state.results[i];
                 return el('span', { class: `dot${r === true ? ' ok' : r === false ? ' ng' : ''}${i === state.index ? ' now' : ''}` });
             })
@@ -253,18 +283,19 @@ function startQuiz(player) {
             state.bestCombo = Math.max(state.bestCombo, state.combo);
             card.append(el('span', { class: 'shuriken' }, '✦'));
 
-            const { before, after } = addScroll(player.id, kanji.k);
+            const { before, after } = addScroll(player.id, kanji.k, track);
             const level = levelOf(after);
+            const name = TRACKS[track].label;
             let wait = 900;
             if (before === 0) {
-                state.fresh.push(kanji.k);
+                state.fresh.push({ k: kanji.k, track });
                 playChime();
-                screen.append(revealView(kanji.k, level, 'あたらしい まきもの ゲット！'));
+                screen.append(revealView(kanji.k, level, track, `あたらしい ${name}の まきもの ゲット！`));
                 wait = 1900;
             } else if (level > levelOf(before)) {
-                state.grown.push(kanji.k);
+                state.grown.push({ k: kanji.k, track });
                 playChime();
-                screen.append(revealView(kanji.k, level, `${LEVELS[level].label}に そだった！`));
+                screen.append(revealView(kanji.k, level, track, `${name}の ${LEVELS[level].label}に そだった！`));
                 wait = 1900;
             } else {
                 playCorrect();
@@ -309,32 +340,35 @@ function startQuiz(player) {
     render();
 }
 
-function revealView(k, level, text) {
+function revealView(k, level, track, text) {
     return el(
         'div',
         { class: 'reveal' },
-        el('div', { class: 'reveal-inner' }, el('div', { class: `reveal-scroll lv${level}` }, k), el('p', {}, text))
+        el('div', { class: 'reveal-inner' }, el('div', { class: `reveal-scroll lv${level} ${track}` }, k), el('p', {}, text))
     );
 }
 
 function showResult(player, state) {
     const total = state.results.length;
     const correct = state.results.filter(Boolean).length;
-    const scrolls = getScrolls(player.id);
     const list = kanjiByGrade(player.grade);
-    const now = collectedCount(player);
     const timers = [];
 
-    // 盤面：今回埋まったマスを順番に光らせる
-    const changed = [...state.fresh.map(k => [k, 'fresh']), ...state.grown.map(k => [k, 'grown'])];
-    const order = new Map(changed.map(([k, kind], i) => [k, { kind, delay: 0.8 + i * 0.4 }]));
-    const gotView = el('strong', {}, String(state.gotBefore));
-    const board = el(
-        'div',
-        { class: 'board' },
-        list.map(x => {
-            const cell = el('span', { class: `cell lv${levelOf(scrolls[x.k] || 0)}` }, x.k);
-            const c = order.get(x.k);
+    // 盤面：今回埋まったマスを、よみ→かきの順に1つずつ光らせる
+    let step = 0;
+    const boards = state.tracks.map(track => {
+        const scrolls = getScrolls(player.id, track);
+        const now = collectedCount(player, track);
+        const changes = new Map();
+        for (const [kind, items] of [['fresh', state.fresh], ['grown', state.grown]]) {
+            for (const item of items.filter(x => x.track === track)) {
+                changes.set(item.k, { kind, delay: 0.8 + step++ * 0.4 });
+            }
+        }
+        const gotView = el('strong', {}, String(state.gotBefore[track]));
+        const cells = list.map(x => {
+            const cell = el('span', { class: `cell lv${levelOf(scrolls[x.k] || 0)} ${track}` }, x.k);
+            const c = changes.get(x.k);
             if (c) {
                 cell.classList.add(c.kind);
                 cell.style.animationDelay = `${c.delay}s`;
@@ -343,10 +377,25 @@ function showResult(player, state) {
                 }
             }
             return cell;
-        })
-    );
+        });
+        const rest = now.total - now.got;
+        return el(
+            'section',
+            { class: 'board-section' },
+            el(
+                'p',
+                { class: 'tally' },
+                trackTag(track),
+                ' の まきもの ',
+                gotView,
+                ` / ${now.total}`,
+                el('br'),
+                rest > 0 ? `あと ${rest}こ で ぜんぶ あつまる！` : 'ぜんぶ あつめた！ つぎは ぜんぶ きんを めざそう'
+            ),
+            el('div', { class: 'board' }, cells)
+        );
+    });
 
-    const rest = now.total - now.got;
     const headline =
         state.fresh.length > 0
             ? `あたらしい まきもの ＋${state.fresh.length}`
@@ -366,16 +415,7 @@ function showResult(player, state) {
             { class: 'result' },
             el('h2', {}, headline),
             el('p', { class: 'lead' }, sub),
-            el(
-                'p',
-                { class: 'tally' },
-                'あつめた ',
-                gotView,
-                ` / ${now.total}`,
-                el('br'),
-                rest > 0 ? `あと ${rest}こ で ぜんぶ あつまる！` : 'ぜんぶ あつめた！ つぎは ぜんぶ きんを めざそう'
-            ),
-            board,
+            boards,
             el(
                 'div',
                 { class: 'actions' },
@@ -401,14 +441,19 @@ function showResult(player, state) {
 
 // ===== 巻物帳 =====
 
-function showCollection(player) {
-    const scrolls = getScrolls(player.id);
+function showCollection(player, track = 'read') {
+    const scrolls = getScrolls(player.id, track);
     const list = kanjiByGrade(player.grade);
-    const c = collectedCount(player);
+    const c = collectedCount(player, track);
 
     const detail = el('div', { class: 'detail hidden' });
+    const countText = t => {
+        const n = getScrolls(player.id, t)[detail.dataset.k] || 0;
+        return n > 0 ? `${TRACKS[t].label}：${n}かい せいかい・${LEVELS[levelOf(n)].label}` : `${TRACKS[t].label}：まだ`;
+    };
     const openDetail = x => {
         const count = scrolls[x.k] || 0;
+        detail.dataset.k = x.k;
         detail.replaceChildren(
             el(
                 'div',
@@ -417,7 +462,7 @@ function showCollection(player) {
                 el('p', {}, `くんよみ：${x.kun.join('、') || 'なし'}`),
                 el('p', {}, `おんよみ：${x.on.join('、') || 'なし'}`),
                 el('ul', {}, x.examples.map(ex => el('li', {}, `${ex.word}（${ex.pre}${ex.yomi}${ex.post}）`))),
-                el('p', { class: 'count' }, count > 0 ? `${count}かい せいかい・${LEVELS[levelOf(count)].label}` : 'まだ せいかい していない'),
+                Object.keys(TRACKS).map(t => el('p', { class: 'count' }, countText(t))),
                 el('button', { class: 'btn', onclick: () => detail.classList.add('hidden') }, 'とじる')
             )
         );
@@ -434,17 +479,29 @@ function showCollection(player) {
                 el('button', { class: 'back', onclick: showHome }, '← もどる'),
                 el('span', {}, `${player.name}の まきものちょう（${player.grade}ねん）`)
             ),
+            el(
+                'div',
+                { class: 'tabs' },
+                Object.keys(TRACKS).map(t =>
+                    el(
+                        'button',
+                        { class: `tab ${t}${t === track ? ' active' : ''}`, onclick: () => showCollection(player, t) },
+                        `${TRACKS[t].label}の まきもの`
+                    )
+                )
+            ),
             el('p', { class: 'lead' }, `あつめた ${c.got} / ${c.total}　きん ${c.gold}`),
+            track === 'write' && el('p', { class: 'hint' }, '「□に はいる かんじは？」に せいかいすると あつまるよ'),
             el(
                 'div',
                 { class: 'legend' },
-                LEVELS.slice(1).map((l, i) => el('span', {}, scrollBadge('字', i + 1), l.label, `（${l.min}かい）`))
+                LEVELS.slice(1).map((l, i) => el('span', {}, scrollBadge('字', i + 1, track), l.label, `（${l.min}かい）`))
             ),
             el(
                 'div',
                 { class: 'grid' },
                 list.map(x => {
-                    const b = scrollBadge(x.k, levelOf(scrolls[x.k] || 0));
+                    const b = scrollBadge(x.k, levelOf(scrolls[x.k] || 0), track);
                     b.addEventListener('click', () => openDetail(x));
                     return b;
                 })
@@ -590,7 +647,7 @@ function startBattle(players) {
                 if (!running || Date.now() < side.lockedUntil) return;
                 if (c === q.answer) {
                     side.score++;
-                    addScroll(side.player.id, kanji.k);
+                    addScroll(side.player.id, kanji.k, q.type);
                     playCorrect();
                     renderSide(side);
                 } else {

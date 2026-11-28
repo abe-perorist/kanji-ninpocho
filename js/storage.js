@@ -43,8 +43,11 @@ export function savePlayers(players) {
     write('players', players);
 }
 
-export function getScrolls(playerId) {
-    const data = read(`scrolls.${playerId}`, {});
+// 読みの巻物は最初からある `scrolls.`、かきの巻物は `writes.` に保存する
+const TRACK_KEYS = { read: 'scrolls', write: 'writes' };
+
+export function getScrolls(playerId, track = 'read') {
+    const data = read(`${TRACK_KEYS[track]}.${playerId}`, {});
     return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
 }
 
@@ -69,10 +72,10 @@ export function saveBestIfBetter(playerId, game, value) {
 /**
  * 正解を1回記録する。巻物が育ったかの判定用に前後の回数を返す。
  */
-export function addScroll(playerId, k) {
-    const scrolls = getScrolls(playerId);
+export function addScroll(playerId, k, track = 'read') {
+    const scrolls = getScrolls(playerId, track);
     const before = scrolls[k] || 0;
     scrolls[k] = before + 1;
-    write(`scrolls.${playerId}`, scrolls);
+    write(`${TRACK_KEYS[track]}.${playerId}`, scrolls);
     return { before, after: before + 1 };
 }

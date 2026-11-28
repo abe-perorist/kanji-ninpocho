@@ -790,3 +790,75 @@ header {
 .word:has(ruby) {
     padding-top: 0.4em;
 }
+
+/* ===== よみ・かき の巻物 ===== */
+
+.track-tag {
+    display: inline-block;
+    border-radius: 6px;
+    padding: 0 8px;
+    font-weight: 800;
+    font-size: 0.9em;
+    background: var(--paper);
+    color: var(--ink);
+}
+
+.track-tag.write {
+    background: #9fb6ff;
+    color: #14214a;
+}
+
+/* かきの巻物は青い紙 */
+.scroll.write.lv1,
+.scroll.write.lv2,
+.cell.write.lv1,
+.cell.write.lv2 {
+    background: #e3eaff;
+}
+
+.reveal-scroll.write {
+    border-left-color: #2f3f7a;
+    border-right-color: #2f3f7a;
+}
+
+.reveal-scroll.write.lv1,
+.reveal-scroll.write.lv2 {
+    background: #e3eaff;
+}
+
+.tabs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 0 0;
+}
+
+.tab {
+    border: 3px solid #3d5079;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-weight: 800;
+    font-size: 17px;
+}
+
+.tab.active {
+    background: var(--paper);
+    border-color: var(--paper);
+    color: var(--ink);
+}
+
+.tab.write.active {
+    background: #9fb6ff;
+    border-color: #9fb6ff;
+    color: #14214a;
+}
+
+.board-section + .board-section {
+    margin-top: 20px;
+}
+
+.progress > div {
+    margin: 2px 0;
+}

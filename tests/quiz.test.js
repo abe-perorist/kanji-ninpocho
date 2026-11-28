@@ -11,7 +11,7 @@ globalThis.localStorage = {
 };
 
 const { KANJI, kanjiByGrade, getKanji } = await import('../js/kanji-data.js');
-const { buildQuestion, pickKanji, pickNext, levelOf, readingSet } = await import('../js/quiz.js');
+const { buildQuestion, pickTasks, pickNext, levelOf, readingSet } = await import('../js/quiz.js');
 const { getPlayers, savePlayers, getScrolls, addScroll } = await import('../js/storage.js');
 
 function check(label, cond) {
@@ -29,7 +29,7 @@ function seeded(seed) {
 
 console.log('--- 問題 ---');
 const rng = seeded(42);
-for (const g of [1, 3]) {
+for (const g of [1, 2, 3]) {
     const pool = kanjiByGrade(g);
     for (const x of pool) {
         for (let n = 0; n < 5; n++) {
@@ -50,7 +50,7 @@ check('全漢字で3択・正解あり・ひっかけが別の正しい読みで
 
 {
     const { buildWriteQuestion, buildMixedQuestion } = await import('../js/quiz.js');
-    for (const g of [1, 3]) {
+    for (const g of [1, 2, 3]) {
         const pool = kanjiByGrade(g);
         for (const x of pool) {
             for (let n = 0; n < 5; n++) {
@@ -77,14 +77,13 @@ check('全漢字で3択・正解あり・ひっかけが別の正しい読みで
     const types = new Set();
     for (let i = 0; i < 50; i++) types.add(buildMixedQuestion(getKanji('山'), kanjiByGrade(1), { rng }).type);
     check('まぜると読み・かき両方出る', types.has('read') && types.has('write'));
-    check('allowWrite=false なら読みだけ', buildMixedQuestion(getKanji('山'), kanjiByGrade(1), { rng: () => 0, allowWrite: false }).type === 'read');
 }
 
 {
     const { matchLabel, pickMatchSet } = await import('../js/quiz.js');
     check('あわせの読みカード：訓はひらがな', matchLabel(getKanji('山')).text === 'やま');
     check('あわせの読みカード：訓がなければ音をカタカナで', matchLabel(getKanji('校')).text === 'コウ');
-    for (const g of [1, 3]) {
+    for (const g of [1, 2, 3]) {
         for (let i = 0; i < 200; i++) {
             const set = pickMatchSet(kanjiByGrade(g), 6, rng);
             assert.strictEqual(set.length, 6, '6組そろう');
@@ -103,37 +102,37 @@ check('送りがなは選択肢全部に付く', up.choices.every(c => c.endsWit
 
 console.log('--- 出題の選び方 ---');
 const g1 = kanjiByGrade(1);
-const picked = pickKanji(g1, {}, 10, seeded(7));
-check('10問ぶん選べる', picked.length === 10);
-check('同じ修行で同じ漢字が出ない', new Set(picked.map(x => x.k)).size === 10);
-check('全部の数より多く頼んでも全部で止まる', pickKanji(g1.slice(0, 3), {}, 10).length === 3);
+const kinds = tasks => tasks.map(t => t.type);
+const distinct = tasks => new Set(tasks.map(t => t.kanji.k)).size === tasks.length;
+const all = v => Object.fromEntries(g1.map(x => [x.k, v]));
 
-// 1つだけ育っていない状態にすると、そればかり出やすい
-const counts = Object.fromEntries(g1.map(x => [x.k, 20]));
-delete counts['山'];
+const first = pickTasks(g1, {}, {}, 10, 4, seeded(11));
+check('はじめての修行は10問とも新しい漢字の読み', first.length === 10 && distinct(first) && kinds(first).every(t => t === 'read'));
+
+const half = Object.fromEntries(g1.slice(0, 40).map(x => [x.k, 1]));
+const s1 = pickTasks(g1, half, {}, 10, 4, seeded(12));
+check('読んだことのない漢字は4問まで', s1.length === 10 && distinct(s1) && s1.filter(t => !half[t.kanji.k]).length === 4);
+check('かき問題は読んだことのある漢字だけ', s1.filter(t => t.type === 'write').every(t => half[t.kanji.k] > 0));
+
+const gold = pickTasks(g1, all(6), {}, 10, 4, seeded(13));
+const writes = gold.filter(t => t.type === 'write').length;
+check(`読みが全部金なら、ほとんど「かき」が出る（10問中${writes}問）`, gold.length === 10 && distinct(gold) && writes >= 8);
+
+const done = pickTasks(g1, all(6), all(6), 10, 4, seeded(14));
+check('読み・かきとも全部金でも10問出る', done.length === 10 && distinct(done));
+
+const few = Object.fromEntries(g1.slice(0, 3).map(x => [x.k, 1]));
+const f = pickTasks(g1, few, {}, 10, 4, seeded(15));
+check('読んだ漢字が3つなら、3問復習＋7問新しい', f.length === 10 && distinct(f) && f.filter(t => !few[t.kanji.k]).length === 7);
+
+// 1つだけ育っていない状態にすると、それが出やすい
+const grown = all(20);
+grown['山'] = 1;
 let hits = 0;
 const r2 = seeded(3);
-for (let i = 0; i < 200; i++) if (pickKanji(g1, counts, 1, r2)[0].k === '山') hits++;
-check(`育っていない巻物が出やすい（200回中${hits}回）`, hits > 50);
-
-{
-    const { pickSession } = await import('../js/quiz.js');
-    const isNew = c => x => !(c[x.k] > 0);
-    const first = pickSession(g1, {}, 10, 4, seeded(11));
-    check('はじめての修行は10問とも新しい漢字', first.length === 10 && new Set(first.map(x => x.k)).size === 10);
-
-    const half = Object.fromEntries(g1.slice(0, 40).map(x => [x.k, 1]));
-    const s = pickSession(g1, half, 10, 4, seeded(12));
-    check('集めた漢字が多いと、新しい漢字は4問まで', s.length === 10 && s.filter(isNew(half)).length === 4);
-
-    const all = Object.fromEntries(g1.map(x => [x.k, 2]));
-    const done = pickSession(g1, all, 10, 4, seeded(13));
-    check('全部集めたあとも10問出る', done.length === 10 && new Set(done.map(x => x.k)).size === 10);
-
-    const few = Object.fromEntries(g1.slice(0, 3).map(x => [x.k, 1]));
-    const f = pickSession(g1, few, 10, 4, seeded(14));
-    check('集めた漢字が3つなら、3問復習＋7問新しい', f.filter(isNew(few)).length === 7 && new Set(f.map(x => x.k)).size === 10);
-}
+for (let i = 0; i < 200; i++) if (pickTasks(g1, grown, all(20), 1, 4, r2)[0].kanji.k === '山') hits++;
+// ランダムなら 160 択で 200 回中 1〜2 回。重みで半分くらいになる
+check(`育っていない巻物が出やすい（200回中${hits}回）`, hits > 60);
 
 const next = pickNext(g1, g1.slice(0, 79).map(x => x.k), seeded(5));
 check('対決では最近出た漢字を避ける', next.k === g1[79].k);
@@ -153,6 +152,8 @@ addScroll('p1', '山');
 const r = addScroll('p1', '山');
 check('正解の回数が数えられる', r.before === 1 && r.after === 2 && getScrolls('p1')['山'] === 2);
 check('プレイヤーごとに別々', !getScrolls('p2')['山']);
+addScroll('p1', '山', 'write');
+check('読みとかきは別々に数える', getScrolls('p1', 'write')['山'] === 1 && getScrolls('p1', 'read')['山'] === 2);
 
 {
     const { getBest, saveBestIfBetter } = await import('../js/storage.js');
@@ -165,4 +166,4 @@ check('プレイヤーごとに別々', !getScrolls('p2')['山']);
 store.set('kanjiNinpocho.players', '{壊れたJSON');
 check('保存データが壊れていても初期値で動く', getPlayers().length === 2);
 
-check('全漢字数は280', KANJI.length === 280);
+check('全漢字数は440（1年80・2年160・3年200）', KANJI.length === 440);
