@@ -20,7 +20,7 @@ const isKana = c => /[ぁ-ゖー]/.test(c);
 
 console.log('--- 配当表どおりか ---');
 check('配当表は1年80字・2年160字・3年200字', [...LIST[1]].length === 80 && [...LIST[2]].length === 160 && [...LIST[3]].length === 200);
-for (const g of [1, 3]) {
+for (const g of [1, 2, 3]) {
     const got = kanjiByGrade(g).map(x => x.k).sort().join('');
     const want = [...LIST[g]].sort().join('');
     const missing = [...LIST[g]].filter(k => !got.includes(k));
@@ -42,7 +42,7 @@ for (const x of KANJI) {
         assert.ok([...ex.yomi].every(isKana), `${label} の漢字のよみがひらがな`);
         assert.ok([...ex.pre, ...ex.post].every(c => isKana(c) || /[\u30a1-\u30f6ー]/.test(c)), `${label} のよみがかな`);
         // その学年までに習う漢字だけを使う
-        const allowed = x.grade === 1 ? LIST[1] : LIST[1] + LIST[2] + LIST[3];
+        const allowed = [1, 2, 3].filter(g => g <= x.grade).map(g => LIST[g]).join('');
         const bad = [...ex.word].filter(c => isKanji(c) && !allowed.includes(c));
         assert.deepStrictEqual(bad, [], `${label} に習っていない漢字がない`);
         // 対象の漢字以外がかなだけのことばは、よみと形が一致するはず

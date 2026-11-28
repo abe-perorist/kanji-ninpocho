@@ -634,3 +634,231 @@ header {
     font-size: 24px;
     padding: 16px 28px;
 }
+
+/* ===== かき問題 ===== */
+
+.word ruby {
+    ruby-position: over;
+}
+
+.word rt {
+    font-family: 'M PLUS Rounded 1c', sans-serif;
+    font-size: 0.28em;
+    font-weight: 800;
+    color: var(--red);
+    letter-spacing: 0.05em;
+}
+
+.word .box {
+    display: inline-block;
+    min-width: 1.1em;
+    border: 4px dashed var(--red);
+    border-radius: 10px;
+    color: #c9b99a;
+    line-height: 1.05;
+}
+
+.word .box.filled {
+    border-style: solid;
+    color: var(--red);
+    animation: pop 0.4s;
+}
+
+.choice.kanji-choice {
+    font-family: var(--kanji-font);
+    font-size: clamp(40px, 8vw, 64px);
+    font-weight: 600;
+    padding: 6px;
+}
+
+.ask.small {
+    font-size: 15px;
+    margin: 8px 0 0;
+}
+
+.side .choice.kanji-choice {
+    font-size: 40px;
+}
+
+/* ===== ホームのボタン ===== */
+
+.sub-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.sub-buttons .btn {
+    font-size: 17px;
+    padding: 12px 8px;
+}
+
+/* ===== かんじあわせ ===== */
+
+.match-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.mcard {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border: none;
+    border-radius: 14px;
+    padding: 0;
+    background: var(--red);
+    color: var(--paper);
+    transition: transform 0.25s;
+}
+
+.mcard .back-face {
+    font-family: var(--kanji-font);
+    font-size: 40px;
+    opacity: 0.35;
+}
+
+.mcard .front-face {
+    display: none;
+}
+
+.mcard.open {
+    background: var(--paper);
+    color: var(--ink);
+    animation: flip 0.25s;
+}
+
+.mcard.open .back-face {
+    display: none;
+}
+
+.mcard.open .front-face {
+    display: block;
+}
+
+.mcard.kanji .front-face {
+    font-family: var(--kanji-font);
+    font-size: clamp(44px, 9vw, 72px);
+}
+
+.mcard.yomi .front-face {
+    font-size: clamp(20px, 4vw, 30px);
+    font-weight: 800;
+}
+
+.mcard.done {
+    background: #fff3c4;
+    box-shadow: 0 0 0 3px var(--gold);
+    animation: pop 0.4s;
+}
+
+@keyframes flip {
+    0% { transform: rotateY(90deg); }
+    100% { transform: rotateY(0); }
+}
+
+.hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 15px;
+}
+
+.lead.dark {
+    color: var(--ink);
+    font-size: 22px;
+    font-weight: 800;
+}
+
+.best-new {
+    color: var(--red);
+    font-weight: 800;
+    font-size: 20px;
+}
+
+.scroll-row.center {
+    justify-content: center;
+}
+
+@media (max-width: 560px) {
+    .match-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* ふりがながカードからはみ出さないように */
+.word:has(ruby) {
+    padding-top: 0.4em;
+}
+
+/* ===== よみ・かき の巻物 ===== */
+
+.track-tag {
+    display: inline-block;
+    border-radius: 6px;
+    padding: 0 8px;
+    font-weight: 800;
+    font-size: 0.9em;
+    background: var(--paper);
+    color: var(--ink);
+}
+
+.track-tag.write {
+    background: #9fb6ff;
+    color: #14214a;
+}
+
+/* かきの巻物は青い紙 */
+.scroll.write.lv1,
+.scroll.write.lv2,
+.cell.write.lv1,
+.cell.write.lv2 {
+    background: #e3eaff;
+}
+
+.reveal-scroll.write {
+    border-left-color: #2f3f7a;
+    border-right-color: #2f3f7a;
+}
+
+.reveal-scroll.write.lv1,
+.reveal-scroll.write.lv2 {
+    background: #e3eaff;
+}
+
+.tabs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 0 0;
+}
+
+.tab {
+    border: 3px solid #3d5079;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-weight: 800;
+    font-size: 17px;
+}
+
+.tab.active {
+    background: var(--paper);
+    border-color: var(--paper);
+    color: var(--ink);
+}
+
+.tab.write.active {
+    background: #9fb6ff;
+    border-color: #9fb6ff;
+    color: #14214a;
+}
+
+.board-section + .board-section {
+    margin-top: 20px;
+}
+
+.progress > div {
+    margin: 2px 0;
+}
