@@ -48,6 +48,56 @@ for (const g of [1, 3]) {
 }
 check('全漢字で3択・正解あり・ひっかけが別の正しい読みでない', true);
 
+{
+    const { buildWriteQuestion, buildMixedQuestion } = await import('../js/quiz.js');
+    for (const g of [1, 3]) {
+        const pool = kanjiByGrade(g);
+        for (const x of pool) {
+            for (let n = 0; n < 5; n++) {
+                const q = buildWriteQuestion(x, pool, rng);
+                assert.strictEqual(new Set(q.choices).size, 3, `${x.k} のかき問題は重複なしの3択`);
+                assert.ok(q.choices.includes(x.k), `${x.k} のかき問題に正解がある`);
+                // ひっかけの漢字が、同じふりがなで読めてしまわない
+                for (const c of q.choices.filter(c => c !== x.k)) {
+                    assert.ok(!readingSet(getKanji(c)).has(q.example.yomi), `${q.example.word}(${q.example.yomi}) のひっかけ ${c} が同じ読み`);
+                    assert.ok(!q.example.word.includes(c), `${q.example.word} のひっかけ ${c} がことばの中にある`);
+                }
+            }
+        }
+    }
+    check('かき問題：全漢字で3択・正解あり・ひっかけが同じ読みにならない', true);
+    check('日・火のように同じ読みの漢字はひっかけに出ない', (() => {
+        const hi = getKanji('火');
+        for (let i = 0; i < 300; i++) {
+            const q = buildWriteQuestion(hi, kanjiByGrade(1), rng);
+            if (q.example.yomi === 'ひ' && q.choices.includes('日')) return false;
+        }
+        return true;
+    })());
+    const types = new Set();
+    for (let i = 0; i < 50; i++) types.add(buildMixedQuestion(getKanji('山'), kanjiByGrade(1), { rng }).type);
+    check('まぜると読み・かき両方出る', types.has('read') && types.has('write'));
+    check('allowWrite=false なら読みだけ', buildMixedQuestion(getKanji('山'), kanjiByGrade(1), { rng: () => 0, allowWrite: false }).type === 'read');
+}
+
+{
+    const { matchLabel, pickMatchSet } = await import('../js/quiz.js');
+    check('あわせの読みカード：訓はひらがな', matchLabel(getKanji('山')).text === 'やま');
+    check('あわせの読みカード：訓がなければ音をカタカナで', matchLabel(getKanji('校')).text === 'コウ');
+    for (const g of [1, 3]) {
+        for (let i = 0; i < 200; i++) {
+            const set = pickMatchSet(kanjiByGrade(g), 6, rng);
+            assert.strictEqual(set.length, 6, '6組そろう');
+            for (const a of set) {
+                for (const b of set) {
+                    if (a !== b) assert.ok(!readingSet(a.kanji).has(b.label.yomi), `${a.kanji.k} が ${b.label.text} とも組めてしまう`);
+                }
+            }
+        }
+    }
+    check('あわせ：6組そろい、どの読みカードも1つの漢字としか組めない', true);
+}
+
 const up = buildQuestion(getKanji('上'), kanjiByGrade(1), seeded(1));
 check('送りがなは選択肢全部に付く', up.choices.every(c => c.endsWith(up.example.post)));
 
@@ -103,6 +153,14 @@ addScroll('p1', '山');
 const r = addScroll('p1', '山');
 check('正解の回数が数えられる', r.before === 1 && r.after === 2 && getScrolls('p1')['山'] === 2);
 check('プレイヤーごとに別々', !getScrolls('p2')['山']);
+
+{
+    const { getBest, saveBestIfBetter } = await import('../js/storage.js');
+    check('記録がないときは null', getBest('p1', 'match-g1') === null);
+    check('はじめての記録は保存される', saveBestIfBetter('p1', 'match-g1', 12) && getBest('p1', 'match-g1') === 12);
+    check('悪い記録では上書きしない', !saveBestIfBetter('p1', 'match-g1', 15) && getBest('p1', 'match-g1') === 12);
+    check('よい記録で更新する', saveBestIfBetter('p1', 'match-g1', 9) && getBest('p1', 'match-g1') === 9);
+}
 
 store.set('kanjiNinpocho.players', '{壊れたJSON');
 check('保存データが壊れていても初期値で動く', getPlayers().length === 2);

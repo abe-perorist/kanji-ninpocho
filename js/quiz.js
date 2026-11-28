@@ -76,11 +76,73 @@ export function buildQuestion(kanji, pool, rng = Math.random, choiceCount = 3) {
     const wrong = [...sameLength, ...others].slice(0, choiceCount - 1);
     const toText = y => ex.pre + y + ex.post;
     return {
+        type: 'read',
         kanji,
         example: ex,
+        reading: toText(ex.yomi),
         answer: toText(ex.yomi),
         choices: shuffle([ex.yomi, ...wrong], rng).map(toText),
     };
+}
+
+/**
+ * 「かき」の問題。ことばの中の漢字を□にして、ふりがなを手がかりに漢字を選ぶ。
+ * その読み方もできる漢字はひっかけにしない（どれを選んでも正解になってしまうため）。
+ */
+export function buildWriteQuestion(kanji, pool, rng = Math.random, choiceCount = 3) {
+    const ex = kanji.examples[Math.floor(rng() * kanji.examples.length)];
+    const candidates = pool.filter(
+        x => x.k !== kanji.k && !ex.word.includes(x.k) && !readingSet(x).has(ex.yomi)
+    );
+    const wrong = shuffle(candidates, rng)
+        .slice(0, choiceCount - 1)
+        .map(x => x.k);
+    return {
+        type: 'write',
+        kanji,
+        example: ex,
+        reading: ex.pre + ex.yomi + ex.post,
+        answer: kanji.k,
+        choices: shuffle([kanji.k, ...wrong], rng),
+    };
+}
+
+/**
+ * 読み・かきをまぜて1問。まだ集めていない漢字は、まず読みから出す。
+ */
+export function buildMixedQuestion(kanji, pool, { rng = Math.random, writeRatio = 0.4, allowWrite = true } = {}) {
+    return allowWrite && rng() < writeRatio
+        ? buildWriteQuestion(kanji, pool, rng)
+        : buildQuestion(kanji, pool, rng);
+}
+
+/**
+ * かんじあわせの読みカード。学校のきまりにあわせて、訓読みはひらがな、
+ * 音読みはカタカナで書く。送りがなのない訓読みがあればそれを優先する。
+ */
+export function matchLabel(kanji) {
+    const plain = kanji.kun.find(r => !r.includes('('));
+    if (plain) return { text: plain, yomi: plain };
+    if (kanji.on.length > 0) {
+        return { text: kanji.on[0], yomi: katakanaToHiragana(kanji.on[0]) };
+    }
+    const full = kanji.kun[0].replace(/[()]/g, '');
+    return { text: full, yomi: full };
+}
+
+/**
+ * かんじあわせで使う n 組。どの読みカードも、ほかの漢字と組めてしまわないように選ぶ。
+ */
+export function pickMatchSet(list, n, rng = Math.random) {
+    const chosen = [];
+    for (const kanji of shuffle(list, rng)) {
+        const label = matchLabel(kanji);
+        const mine = readingSet(kanji);
+        const clash = chosen.some(c => readingSet(c.kanji).has(label.yomi) || mine.has(c.label.yomi));
+        if (!clash) chosen.push({ kanji, label });
+        if (chosen.length === n) break;
+    }
+    return chosen;
 }
 
 /**

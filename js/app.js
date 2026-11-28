@@ -1,9 +1,10 @@
 import { GRADES, kanjiByGrade } from './kanji-data.js';
-import { LEVELS, buildQuestion, levelOf, pickNext, pickSession } from './quiz.js';
-import { addScroll, getPlayers, getScrolls, savePlayers } from './storage.js';
+import { LEVELS, buildMixedQuestion, levelOf, pickMatchSet, pickNext, pickSession, shuffle } from './quiz.js';
+import { addScroll, getBest, getPlayers, getScrolls, saveBestIfBetter, savePlayers } from './storage.js';
 
 const QUIZ_LENGTH = 10;
 const NEW_PER_QUIZ = 4; // 1回の修行でまぜる「まだ集めていない漢字」の数
+const MATCH_PAIRS = 6;
 const BATTLE_SECONDS = 60;
 const PENALTY_MS = 1000;
 
@@ -95,6 +96,28 @@ function wordView(q) {
     );
 }
 
+// 問題の種類ごとの見せ方。fill() は答えたあとに正解を見せる
+function questionView(q) {
+    if (q.type === 'read') {
+        return { ask: 'あかい かんじの よみかたは？', view: wordView(q), fill: () => {} };
+    }
+    const { word } = q.example;
+    const i = word.indexOf(q.kanji.k);
+    const box = el('span', { class: 'box' }, '？');
+    return {
+        ask: '□に はいる かんじは？',
+        view: el('div', { class: 'word' }, word.slice(0, i), el('ruby', {}, box, el('rt', {}, q.example.yomi)), word.slice(i + 1)),
+        fill: () => {
+            box.textContent = q.kanji.k;
+            box.classList.add('filled');
+        },
+    };
+}
+
+function choiceButton(q, text) {
+    return el('button', { class: q.type === 'write' ? 'choice kanji-choice' : 'choice' }, text);
+}
+
 function collectedCount(player) {
     const scrolls = getScrolls(player.id);
     const list = kanjiByGrade(player.grade);
@@ -137,7 +160,12 @@ function showHome() {
             el('button', { class: 'grade', onclick: changeGrade }, `${player.grade}ねんせい`),
             el('div', { class: 'progress' }, `まきもの ${c.got} / ${c.total}`, el('br'), `きん ${c.gold}`),
             el('button', { class: 'btn primary', onclick: () => startQuiz(player) }, 'しゅぎょう'),
-            el('button', { class: 'btn', onclick: () => showCollection(player) }, 'まきものちょう')
+            el(
+                'div',
+                { class: 'sub-buttons' },
+                el('button', { class: 'btn', onclick: () => startMatch(player) }, 'かんじ あわせ'),
+                el('button', { class: 'btn', onclick: () => showCollection(player) }, 'まきものちょう')
+            )
         );
     });
 
@@ -146,7 +174,7 @@ function showHome() {
             'main',
             { class: 'home' },
             el('h1', {}, 'かんじ', el('span', {}, '忍法帖')),
-            el('p', { class: 'lead' }, 'かんじの よみを あてて、まきものを あつめよう'),
+            el('p', { class: 'lead' }, 'かんじを よんで かいて、まきものを あつめよう'),
             el('div', { class: 'players' }, cards),
             el('button', { class: 'btn battle', onclick: () => startBattle(players) }, '⚔ きょうだい たいけつ')
         )
@@ -179,14 +207,15 @@ function startQuiz(player) {
 
     const render = () => {
         const kanji = targets[state.index];
-        const q = buildQuestion(kanji, pool);
         const isNew = !(getScrolls(player.id)[kanji.k] > 0);
+        const q = buildMixedQuestion(kanji, pool, { allowWrite: !isNew });
+        const qv = questionView(q);
         const feedback = el('div', { class: 'feedback' });
         const card = el(
             'div',
             { class: 'card' },
             isNew && el('span', { class: 'new-tag' }, 'はじめての かんじ'),
-            wordView(q)
+            qv.view
         );
         const dots = el(
             'div',
@@ -202,6 +231,7 @@ function startQuiz(player) {
             if (choices.dataset.done) return;
             choices.dataset.done = '1';
             const dot = dots.children[state.index];
+            qv.fill();
 
             if (choice !== q.answer) {
                 button.classList.add('ng');
@@ -211,7 +241,7 @@ function startQuiz(player) {
                 state.results.push(false);
                 state.combo = 0;
                 state.missed.push(q);
-                feedback.replaceChildren(el('span', { class: 'bad' }, `こたえは「${q.answer}」`));
+                feedback.replaceChildren(el('span', { class: 'bad' }, q.type === 'write' ? `こたえは「${q.answer}」（${q.reading}）` : `こたえは「${q.answer}」`));
                 later(next, 2200);
                 return;
             }
@@ -250,7 +280,7 @@ function startQuiz(player) {
             'div',
             { class: 'choices' },
             q.choices.map(c => {
-                const b = el('button', { class: 'choice' }, c);
+                const b = choiceButton(q, c);
                 b.addEventListener('click', () => answer(b, c));
                 return b;
             })
@@ -264,7 +294,7 @@ function startQuiz(player) {
                 dots,
                 el('span', {}, player.name)
             ),
-            el('p', { class: 'ask' }, 'あかい かんじの よみかたは？'),
+            el('p', { class: 'ask' }, qv.ask),
             card,
             choices,
             feedback
@@ -361,7 +391,7 @@ function showResult(player, state) {
                     el(
                         'ul',
                         { class: 'missed' },
-                        state.missed.map(q => el('li', {}, el('span', { class: 'w' }, q.example.word), ` … ${q.answer}`))
+                        state.missed.map(q => el('li', {}, el('span', { class: 'w' }, q.example.word), ` … ${q.reading}`))
                     )
                 )
         )
@@ -424,6 +454,114 @@ function showCollection(player) {
     );
 }
 
+// ===== かんじあわせ（神経衰弱） =====
+
+function startMatch(player) {
+    const pool = kanjiByGrade(player.grade);
+    const game = `match-g${player.grade}`;
+    const set = pickMatchSet(pool, MATCH_PAIRS);
+    const cards = shuffle(
+        set.flatMap((s, pair) => [
+            { pair, kind: 'kanji', face: s.kanji.k },
+            { pair, kind: 'yomi', face: s.label.text },
+        ])
+    );
+    const state = { open: [], matched: 0, moves: 0, locked: false };
+    const timers = [];
+    const movesView = el('strong', {}, '0');
+    const best = getBest(player.id, game);
+
+    const finish = () => {
+        const isBest = saveBestIfBetter(player.id, game, state.moves);
+        playChime();
+        screen.append(
+            el(
+                'div',
+                { class: 'overlay' },
+                el(
+                    'div',
+                    { class: 'detail-card' },
+                    el('h2', {}, 'ぜんぶ そろった！'),
+                    el('p', { class: 'lead dark' }, `${state.moves}かいで クリア`),
+                    isBest
+                        ? el('p', { class: 'best-new' }, best === null ? 'はじめての きろく！' : `じこベスト こうしん！（まえは ${best}かい）`)
+                        : el('p', {}, `じこベストは ${best}かい`),
+                    el('div', { class: 'scroll-row center' }, set.map(s => scrollBadge(s.kanji.k, levelOf(getScrolls(player.id)[s.kanji.k] || 0)))),
+                    el(
+                        'div',
+                        { class: 'actions' },
+                        el('button', { class: 'btn primary', onclick: () => startMatch(player) }, 'もういっかい'),
+                        el('button', { class: 'btn', onclick: showHome }, 'もどる')
+                    )
+                )
+            )
+        );
+    };
+
+    const flip = (card, button) => {
+        if (state.locked || card.open || card.done) return;
+        card.open = true;
+        button.classList.add('open');
+        state.open.push({ card, button });
+        if (state.open.length < 2) return;
+
+        state.moves++;
+        movesView.textContent = String(state.moves);
+        const [a, b] = state.open;
+        state.open = [];
+        if (a.card.pair === b.card.pair) {
+            a.card.done = b.card.done = true;
+            a.button.classList.add('done');
+            b.button.classList.add('done');
+            addScroll(player.id, set[a.card.pair].kanji.k);
+            playCorrect();
+            state.matched++;
+            if (state.matched === set.length) timers.push(setTimeout(finish, 600));
+            return;
+        }
+        // そろわなかったら少し見せてから裏返す
+        state.locked = true;
+        timers.push(
+            setTimeout(() => {
+                for (const x of [a, b]) {
+                    x.card.open = false;
+                    x.button.classList.remove('open');
+                }
+                state.locked = false;
+            }, 1000)
+        );
+    };
+
+    const screen = el(
+        'main',
+        { class: 'match' },
+        el(
+            'header',
+            {},
+            el('button', { class: 'back', onclick: showHome }, '← やめる'),
+            el('span', {}, 'めくった かいすう ', movesView, best !== null ? `（ベスト ${best}）` : '')
+        ),
+        el('p', { class: 'ask' }, 'かんじと よみかたを そろえよう'),
+        el(
+            'div',
+            { class: 'match-grid' },
+            cards.map(card => {
+                const button = el(
+                    'button',
+                    { class: `mcard ${card.kind}` },
+                    el('span', { class: 'back-face' }, '忍'),
+                    el('span', { class: 'front-face' }, card.face)
+                );
+                button.addEventListener('click', () => flip(card, button));
+                return button;
+            })
+        ),
+        el('p', { class: 'hint' }, 'ひらがなは くんよみ、カタカナは おんよみ')
+    );
+    show(screen);
+    cleanup = () => timers.forEach(clearTimeout);
+}
+
 // ===== 兄弟対決 =====
 
 function startBattle(players) {
@@ -443,10 +581,11 @@ function startBattle(players) {
     const renderSide = side => {
         const kanji = pickNext(side.pool, side.recent);
         side.recent = [...side.recent, kanji.k].slice(-8);
-        const q = buildQuestion(kanji, side.pool);
+        const q = buildMixedQuestion(kanji, side.pool);
+        const qv = questionView(q);
         const choices = el('div', { class: 'choices' });
         for (const c of q.choices) {
-            const b = el('button', { class: 'choice' }, c);
+            const b = choiceButton(q, c);
             b.addEventListener('click', () => {
                 if (!running || Date.now() < side.lockedUntil) return;
                 if (c === q.answer) {
@@ -467,7 +606,8 @@ function startBattle(players) {
         }
         side.root.replaceChildren(
             el('div', { class: 'side-head' }, el('span', {}, `${side.player.name}（${side.player.grade}ねん）`), el('strong', {}, `${side.score}`)),
-            wordView(q),
+            el('p', { class: 'ask small' }, qv.ask),
+            qv.view,
             choices
         );
     };
